@@ -1,7 +1,9 @@
-use futures::stream::TryStreamExt;
+mod app;
+
 use leptos::{
-    component, create_effect, create_resource, mount_to_body, view, window, For, IntoView, Memo,
-    Signal, SignalGet, SignalGetUntracked, SignalWithUntracked, Suspense, WriteSignal,
+    component, create_effect, create_owning_memo, create_resource, expect_context, mount_to_body,
+    provide_context, view, window, IntoView, Memo, Signal, SignalGet, SignalGetUntracked,
+    SignalWithUntracked, WriteSignal,
 };
 use leptos_router::{
     use_navigate, use_query_map, NavigateOptions, ParamsMap, Route, Router, Routes,
@@ -11,6 +13,8 @@ use rspotify::{
     clients::{BaseClient, OAuthClient},
     scopes, AuthCodePkceSpotify, Credentials, OAuth, Token,
 };
+
+use crate::app::MainPage;
 
 const SPOTIFY_API_ID: &'static str = "e88dbb278f734122875172d70978e455";
 
@@ -36,9 +40,10 @@ async fn get_token(query_map: Memo<ParamsMap>, spotify: AuthCodePkceSpotify) -> 
 #[component]
 fn Callback(
     #[prop(into)] oauth_flow_state: Signal<OAuthFlowState>,
-    #[prop(into)] spotify: Signal<AuthCodePkceSpotify>,
     set_oauth_flow: WriteSignal<OAuthFlow>,
 ) -> impl IntoView {
+    let spotify = expect_context::<Memo<AuthCodePkceSpotify>>();
+
     create_resource(
         move || use_query_map(),
         move |query_map| async move {
@@ -61,11 +66,8 @@ fn Callback(
     );
 }
 
-#[component]
-fn App(
-    #[prop(into)] oauth_flow_state: Signal<OAuthFlowState>,
-    #[prop(into)] spotify: Signal<AuthCodePkceSpotify>,
-) -> impl IntoView {
+#[component(transparent)]
+fn Main(#[prop(into)] oauth_flow_state: Signal<OAuthFlowState>) -> impl IntoView {
     create_effect(move |_| {
         let navigate = use_navigate();
         match oauth_flow_state.get() {
@@ -77,33 +79,13 @@ fn App(
         }
     });
 
-    let playlists = create_resource(
-        || (),
-        move |_| async move {
-            let spotify = spotify.get_untracked();
-            let playlists_stream = spotify.current_user_playlists();
-
-            let v: Vec<_> = playlists_stream.try_collect().await.unwrap();
-
-            v
-        },
-    );
-
     view! {
-        <Suspense fallback=|| view! { <h1>Loading</h1> }>
-            <h1>Playlists:</h1>
-            <For
-                each=move || playlists.get().unwrap_or_default()
-                key=|playlist| playlist.id.clone()
-                let:playlist
-            >
-                <p>
-                    {playlist.name.clone()} ": "
-                    {if playlist.collaborative { "collaborative" } else { "solo" }}
-
-                </p>
-            </For>
-        </Suspense>
+        <Route
+            path=""
+            view=move || {
+                view! { <MainPage/> }
+            }
+        />
     }
 }
 
@@ -143,6 +125,8 @@ enum OAuthFlowState {
 }
 
 fn main() {
+    console_error_panic_hook::set_once();
+
     let (oauth_flow, set_oauth_flow, _) =
         use_local_storage::<OAuthFlow, JsonCodec>("spotify_token");
 
@@ -152,17 +136,25 @@ fn main() {
         OAuthFlow::GotToken { .. } => OAuthFlowState::GotToken,
     });
 
-    let spotify = Signal::derive(move || match oauth_flow.get() {
-        OAuthFlow::FirstVisit => init_spotify(),
-        OAuthFlow::RequestedUserAuthorization { verifier } => {
-            let mut s = init_spotify();
-            s.verifier = Some(verifier);
-            s
-        }
-        OAuthFlow::GotToken { token } => AuthCodePkceSpotify::from_token(token),
+    let spotify = create_owning_memo(move |old: Option<AuthCodePkceSpotify>| {
+        let spotify = match oauth_flow.get() {
+            OAuthFlow::FirstVisit => init_spotify(),
+            OAuthFlow::RequestedUserAuthorization { verifier } => {
+                if let Some(old) = old {
+                    if old.verifier.as_ref() == Some(&verifier) {
+                        return (old, false);
+                    }
+                }
+                let mut s = init_spotify();
+                s.verifier = Some(verifier);
+                s
+            }
+            OAuthFlow::GotToken { token } => AuthCodePkceSpotify::from_token(token),
+        };
+        (spotify, true)
     });
 
-    console_error_panic_hook::set_once();
+    provide_context(spotify);
 
     mount_to_body(move || {
         view! {
@@ -184,21 +176,13 @@ fn main() {
                                     view! {
                                         <Callback
                                             oauth_flow_state=oauth_flow_state
-                                            spotify=spotify
                                             set_oauth_flow=set_oauth_flow
                                         />
                                     }
                                 }
                             />
 
-                            <Route
-                                path=""
-                                view=move || {
-                                    view! {
-                                        <App oauth_flow_state=oauth_flow_state spotify=spotify/>
-                                    }
-                                }
-                            />
+                            <Main oauth_flow_state=oauth_flow_state/>
 
                         </Routes>
                     </main>
