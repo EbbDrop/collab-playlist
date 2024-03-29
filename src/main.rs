@@ -14,7 +14,7 @@ use rspotify::{
     scopes, AuthCodePkceSpotify, Credentials, OAuth, Token,
 };
 
-use crate::app::MainPage;
+use crate::app::{MainPage, Playlist};
 
 const SPOTIFY_API_ID: &'static str = "e88dbb278f734122875172d70978e455";
 
@@ -80,12 +80,10 @@ fn Main(#[prop(into)] oauth_flow_state: Signal<OAuthFlowState>) -> impl IntoView
     });
 
     view! {
-        <Route
-            path=""
-            view=move || {
-                view! { <MainPage/> }
-            }
-        />
+        <Route path="/" view=MainPage>
+            <Route path="/:id" view=Playlist/>
+            <Route path="" view=|| view! {}/>
+        </Route>
     }
 }
 
