@@ -42,16 +42,16 @@ pub fn MainPage() -> impl IntoView {
                 key=|playlist| playlist.id.clone()
                 let:playlist
             >
-                <p>
-                    <a href=format!(
-                        "/{}",
-                        Borrow::<str>::borrow(&playlist.id),
-                    )>
-                        {playlist.name.clone()} ": "
-                        {if playlist.collaborative { "collaborative" } else { "solo" }}
+                <a
+                    href=format!("/{}", Borrow::<str>::borrow(&playlist.id))
 
-                    </a>
-                </p>
+                    class="selection-button"
+                >
+                    {playlist.name.clone()}
+                    ": "
+                    {if playlist.collaborative { "collaborative" } else { "solo" }}
+
+                </a>
             </For>
         </Suspense>
         <Outlet/>
@@ -227,7 +227,7 @@ pub fn Playlist() -> impl IntoView {
                     .map(|playlist| {
                         view! {
                             <h2>{format!("Playlist: \"{}\":", playlist.name)}</h2>
-                            <table style="width:100%;height:100%;table-layout:fixed;overflow:hidden">
+                            <table class="ribon-table">
                                 <colgroup>
                                     {playlist
                                         .tracks
@@ -244,8 +244,12 @@ pub fn Playlist() -> impl IntoView {
                                         .into_iter()
                                         .map(|user| {
                                             view! {
-                                                <th colspan=user.amount_of_tracks.to_string()>
-                                                    <p>
+                                                <th
+                                                    colspan=user.amount_of_tracks.to_string()
+                                                    class="ribon-user-cell"
+                                                >
+                                                    <p class="ribon-user-name">{user.name}</p>
+                                                    <p class="ribon-user-time">
                                                         {format!(
                                                             "{} ({:.1}%)",
                                                             display_duration(&user.total_duration),
@@ -253,8 +257,6 @@ pub fn Playlist() -> impl IntoView {
                                                         )}
 
                                                     </p>
-                                                    <p>{user.name}</p>
-
                                                 </th>
                                             }
                                         })
@@ -265,24 +267,10 @@ pub fn Playlist() -> impl IntoView {
                                         .tracks
                                         .iter()
                                         .map(|track| {
-                                            let width = format!("{}%", track.relative_size * 100.0);
                                             let color = track.color.to_string();
                                             view! {
-                                                <th
-                                                    style:width=width
-                                                    style:background=color
-                                                    style:height="5em"
-                                                >
-                                                    <div
-                                                        style:writing-mode="vertical-rl"
-                                                        style:width="100%"
-                                                        style:height="100%"
-                                                        style:text-overflow=""
-                                                        style:overflow="hidden"
-                                                        style:white-space="nowrap"
-                                                    >
-                                                        {track.name.clone()}
-
+                                                <th style=("--color", color) class="ribon-track-cell">
+                                                    <div class="ribon-track-name">{track.name.clone()}
                                                     </div>
                                                 </th>
                                             }
