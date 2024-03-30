@@ -9,7 +9,7 @@ use leptos::{
     component, create_local_resource, expect_context, view, For, IntoView, Memo, SignalGet,
     SignalGetUntracked, SignalWith, Suspense,
 };
-use leptos_router::{use_params_map, Outlet};
+use leptos_router::{use_params_map, Outlet, A};
 use random_color::RandomColor;
 use rgb::RGB8;
 use rspotify::{
@@ -40,7 +40,7 @@ pub fn MainPage() -> impl IntoView {
             <Suspense fallback=|| {
                 view! {
                     <h1>Loading</h1>
-                    <a href="/login">If this is taking a long time, click here.</a>
+                    <A href="/collab-playlist/login">If this is taking a long time, click here.</A>
                 }
             }>
                 <div class="selection-buttons">
@@ -49,15 +49,15 @@ pub fn MainPage() -> impl IntoView {
                         key=|playlist| playlist.id.clone()
                         let:playlist
                     >
-                        <a
-                            href=format!("/{}", Borrow::<str>::borrow(&playlist.id))
+                        <A
+                            href={Borrow::<str>::borrow(&playlist.id.clone()).to_owned()}
                             class="selection-button"
                         >
                             {playlist.name.clone()}
                             ": "
                             {if playlist.collaborative { "collaborative" } else { "solo" }}
 
-                        </a>
+                        </A>
                     </For>
                 </div>
             </Suspense>
@@ -231,7 +231,7 @@ pub fn Playlist() -> impl IntoView {
         <Suspense fallback=|| {
             view! {
                 <h2>Loading playlist</h2>
-                <a href="/login">If this is taking a long time, click here.</a>
+                <A href="/collab-playlist/login">If this is taking a long time, click here.</A>
             }
         }>
             {move || {

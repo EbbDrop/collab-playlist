@@ -6,7 +6,7 @@ use leptos::{
     SignalWithUntracked, WriteSignal,
 };
 use leptos_router::{
-    use_navigate, use_query_map, NavigateOptions, ParamsMap, Route, Router, Routes,
+    use_navigate, use_query_map, NavigateOptions, Outlet, ParamsMap, Route, Router, Routes,
 };
 use leptos_use::{storage::use_local_storage, utils::JsonCodec};
 use rspotify::{
@@ -19,11 +19,12 @@ use crate::app::{MainPage, Playlist};
 const SPOTIFY_API_ID: &'static str = "e88dbb278f734122875172d70978e455";
 
 fn init_spotify() -> AuthCodePkceSpotify {
+    let origin = window().location().origin().unwrap();
+    let redirect_uri = format!("{origin}/collab-playlist/callback");
     AuthCodePkceSpotify::new(
         Credentials::new_pkce(SPOTIFY_API_ID),
         OAuth {
-            // TODO: Should be dynamic
-            redirect_uri: "https://ebbdrop.com/collab-playlist/callback".to_owned(),
+            redirect_uri,
             scopes: scopes!("playlist-read-collaborative"),
             ..Default::default()
         },
@@ -55,12 +56,12 @@ fn Callback(
                     match get_token(query_map, spotify).await {
                         Some(token) => {
                             set_oauth_flow(OAuthFlow::GotToken { token });
-                            navigate("/", NavigateOptions::default())
+                            navigate("/collab-playlist", NavigateOptions::default())
                         }
-                        None => navigate("/login", NavigateOptions::default()),
+                        None => navigate("/collab-playlist/login", NavigateOptions::default()),
                     }
                 }
-                _ => navigate("/login", NavigateOptions::default()),
+                _ => navigate("/collab-playlist/login", NavigateOptions::default()),
             }
         },
     );
@@ -71,17 +72,19 @@ fn Main(#[prop(into)] oauth_flow_state: Signal<OAuthFlowState>) -> impl IntoView
     create_effect(move |_| {
         let navigate = use_navigate();
         match oauth_flow_state.get() {
-            OAuthFlowState::FirstVisit => navigate("/login", NavigateOptions::default()),
+            OAuthFlowState::FirstVisit => {
+                navigate("/collab-playlist/login", NavigateOptions::default())
+            }
             OAuthFlowState::RequestedUserAuthorization => {
-                navigate("/login", NavigateOptions::default())
+                navigate("/collab-playlist/login", NavigateOptions::default())
             }
             OAuthFlowState::GotToken => {}
         }
     });
 
     view! {
-        <Route path="/" view=MainPage>
-            <Route path="/:id" view=Playlist/>
+        <Route path="" view=MainPage>
+            <Route path=":id" view=Playlist/>
             <Route path="" view=|| view! {}/>
         </Route>
     }
@@ -161,27 +164,29 @@ fn main() {
                     <nav></nav>
                     <main>
                         <Routes>
-                            <Route
-                                path="/login"
-                                view=move || {
-                                    view! { <Login set_oauth_flow=set_oauth_flow/> }
-                                }
-                            />
-
-                            <Route
-                                path="/callback"
-                                view=move || {
-                                    view! {
-                                        <Callback
-                                            oauth_flow_state=oauth_flow_state
-                                            set_oauth_flow=set_oauth_flow
-                                        />
+                            <Route path="/collab-playlist" view=Outlet>
+                                <Route
+                                    path="login"
+                                    view=move || {
+                                        view! { <Login set_oauth_flow=set_oauth_flow/> }
                                     }
-                                }
-                            />
+                                />
 
-                            <Main oauth_flow_state=oauth_flow_state/>
+                                <Route
+                                    path="callback"
+                                    view=move || {
+                                        view! {
+                                            <Callback
+                                                oauth_flow_state=oauth_flow_state
+                                                set_oauth_flow=set_oauth_flow
+                                            />
+                                        }
+                                    }
+                                />
 
+                                <Main oauth_flow_state=oauth_flow_state/>
+
+                            </Route>
                         </Routes>
                     </main>
                 </Router>
