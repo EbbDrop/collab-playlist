@@ -14,5 +14,6 @@ leptos-use = { version = "0.10.5", features = ["serde"] }
 leptos_dom = { version = "0.6.9", features = ["csr", "nightly"] }
 leptos_router = { version = "0.6.9", features = ["csr", "nightly"] }
 random_color = "0.8.0"
+rgb = "0.8.37"
 rspotify = "0.13.0"
 serde = { version = "1.0.197", features = ["serde_derive"] }

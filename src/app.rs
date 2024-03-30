@@ -1,17 +1,20 @@
-use std::borrow::Borrow;
+use std::{
+    borrow::Borrow,
+    collections::{HashMap, HashSet},
+};
 
-use chrono::TimeDelta;
-use futures::stream::TryStreamExt;
+use chrono::{TimeDelta, Utc};
+use futures::{future::join_all, stream::TryStreamExt};
 use leptos::{
     component, create_local_resource, expect_context, view, For, IntoView, Memo, SignalGet,
     SignalGetUntracked, SignalWith, Suspense,
 };
 use leptos_router::{use_params_map, Outlet};
 use random_color::RandomColor;
+use rgb::RGB8;
 use rspotify::{
     clients::{BaseClient, OAuthClient},
-    model::{PlayableItem, PlaylistId, UserId},
-    prelude::Id,
+    model::{PlayableItem, PlaylistId},
     AuthCodePkceSpotify,
 };
 
@@ -55,6 +58,39 @@ pub fn MainPage() -> impl IntoView {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct TrackInfo {
+    name: String,
+    duration: TimeDelta,
+    relative_size: f64,
+    color: RGB8,
+    age: TimeDelta,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct UserInfo {
+    name: String,
+    relative_size: f64,
+    total_duration: TimeDelta,
+    amount_of_tracks: u64,
+    color: RGB8,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct PlaylistInfo {
+    name: String,
+    total_duration: TimeDelta,
+
+    tracks: Vec<TrackInfo>,
+    users: Vec<UserInfo>,
+}
+
+fn display_duration(dur: &TimeDelta) -> String {
+    let minutes = dur.num_minutes();
+    let seconds = dur.num_seconds() - minutes * 60;
+    format!("{minutes}:{seconds}")
+}
+
 #[component]
 pub fn Playlist() -> impl IntoView {
     let params = use_params_map();
@@ -62,140 +98,197 @@ pub fn Playlist() -> impl IntoView {
 
     let spotify = expect_context::<Memo<AuthCodePkceSpotify>>();
 
-    let playlist = create_local_resource(id, move |id| async move {
+    let raw_data = create_local_resource(id, move |id| async move {
         let spotify = spotify.get_untracked();
 
         let id = PlaylistId::from_id(id).unwrap();
 
-        let mut playlist = spotify.playlist(id, None, None).await.unwrap();
-        playlist.tracks.items.sort_by(|a, b| {
-            a.added_by
-                .as_ref()
-                .map(|u| u.id.uri())
-                .cmp(&b.added_by.as_ref().map(|u| u.id.uri()))
-        });
+        let playlist = spotify.playlist(id, None, None).await.unwrap();
 
-        let mut total = TimeDelta::default();
+        let mut users = HashSet::new();
 
-        let mut people: Vec<(Option<UserId>, u64, TimeDelta)> = Vec::new();
+        for t in &playlist.tracks.items {
+            if let Some(added_by) = &t.added_by {
+                users.insert(added_by.id.clone());
+            }
+        }
 
-        for pl_track in &playlist.tracks.items {
-            match &pl_track.track {
+        let user_names = join_all(users.into_iter().map(|id| (id, spotify.clone())).map(
+            |(user_id, spotify)| async move {
+                let Ok(user) = spotify.user(user_id.clone()).await else {
+                    return (user_id, "Faild to get user".to_owned());
+                };
+                let name = user.display_name.unwrap_or_else(|| user.id.to_string());
+                (user_id, name)
+            },
+        ))
+        .await
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        (playlist, user_names)
+    });
+
+    let data = move || {
+        let Some((playlist, user_names)) = raw_data.get() else {
+            return None;
+        };
+
+        let name = playlist.name;
+
+        let mut total_duration = TimeDelta::default();
+        let mut user_id_to_track = HashMap::new();
+
+        for item in playlist.tracks.items {
+            match item.track {
                 Some(PlayableItem::Track(track)) => {
-                    let id = pl_track.added_by.as_ref().map(|u| u.id.clone());
-                    if let Some(last) = people.last_mut() {
-                        if last.0 == id {
-                            last.1 += 1;
-                            last.2 += track.duration;
-                        } else {
-                            people.push((id, 1, track.duration.clone()))
-                        }
-                    } else {
-                        people.push((id, 1, track.duration.clone()))
-                    }
-
-                    total += track.duration;
+                    total_duration += track.duration;
+                    user_id_to_track
+                        .entry(item.added_by.map(|u| u.id))
+                        .or_insert_with(Vec::new)
+                        .push((item.added_at, track));
                 }
                 _ => {}
             }
         }
 
-        let people = people
+        let now = Utc::now();
+        let mut data = user_id_to_track
             .into_iter()
-            .map(|(id, amount, duration)| {
-                let user = create_local_resource(
-                    move || id.clone(),
-                    move |id| async move {
-                        let spotify = expect_context::<Memo<AuthCodePkceSpotify>>();
-                        let Some(id) = id else {
-                            return "Unknow".to_owned();
-                        };
-                        let user = spotify.get_untracked().user(id).await.unwrap();
-                        user.display_name.unwrap_or_else(|| user.id.to_string())
-                    },
-                );
-                (user, amount, duration)
+            .map(|(user_id, groups)| {
+                let color = RandomColor::new()
+                    .seed(
+                        user_id
+                            .as_ref()
+                            .map(|id| Borrow::<str>::borrow(id))
+                            .unwrap_or_default(),
+                    )
+                    .to_rgb_array();
+                let color: RGB8 = color.into();
+
+                let mut user_tracks = groups
+                    .into_iter()
+                    .map(|(added_at, track)| {
+                        let age = now.clone().signed_duration_since(added_at.unwrap_or(now));
+
+                        TrackInfo {
+                            name: track.name,
+                            duration: track.duration,
+                            relative_size: track.duration.num_milliseconds() as f64
+                                / total_duration.num_milliseconds() as f64,
+                            color: color.clone(),
+                            age,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                user_tracks.sort_unstable_by(|a, b| a.duration.cmp(&b.duration));
+
+                let user_name = user_id
+                    .and_then(|id| user_names.get(&id).cloned())
+                    .unwrap_or_else(|| "Unknow".to_owned());
+
+                let user_total_duration: TimeDelta = user_tracks.iter().map(|t| &t.duration).sum();
+
+                let user = UserInfo {
+                    name: user_name,
+                    relative_size: user_total_duration.num_milliseconds() as f64
+                        / total_duration.num_milliseconds() as f64,
+                    total_duration: user_total_duration,
+                    amount_of_tracks: user_tracks.len() as u64,
+                    color,
+                };
+                (user, user_tracks)
             })
             .collect::<Vec<_>>();
 
-        (playlist, total.num_milliseconds(), people)
-    });
+        data.sort_unstable_by(|a, b| a.0.total_duration.cmp(&b.0.total_duration));
+
+        let mut tracks = Vec::new();
+        let mut users = Vec::new();
+        for (user, mut user_tracks) in data {
+            tracks.append(&mut user_tracks);
+            users.push(user);
+        }
+
+        Some(PlaylistInfo {
+            name,
+            total_duration,
+            tracks,
+            users,
+        })
+    };
 
     view! {
         <Suspense fallback=|| {
             view! { <h2>Loading playlist</h2> }
         }>
-
             {move || {
-                playlist()
-                    .map(|(playlist, num_milliseconds, people)| {
+                data()
+                    .map(|playlist| {
                         view! {
-                            <h2>"Playlist \"" {playlist.name.clone()} "\":"</h2>
+                            <h2>{format!("Playlist: \"{}\":", playlist.name)}</h2>
                             <table style="width:100%;height:100%;table-layout:fixed;overflow:hidden">
-                                <tbody>
-                                    <tr>
-                                        {playlist
-                                            .tracks
-                                            .items
-                                            .iter()
-                                            .filter_map(|track| {
-                                                let color = RandomColor::new()
-                                                    .seed::<
-                                                        &str,
-                                                    >(
-                                                        track
-                                                            .added_by
-                                                            .as_ref()
-                                                            .map(|user| user.id.borrow())
-                                                            .unwrap_or_default(),
-                                                    )
-                                                    .to_hex();
-                                                match &track.track {
-                                                    Some(PlayableItem::Track(track)) => {
-                                                        let name = track.name.clone();
-                                                        let duration = track.duration.clone();
-                                                        Some((name, duration, color))
-                                                    }
-                                                    _ => None,
-                                                }
-                                            })
-                                            .map(|(name, duration, color)| {
-                                                let width = duration.num_milliseconds() as f64
-                                                    / num_milliseconds as f64;
-                                                let width = format!("{width}%");
-                                                view! {
-                                                    <th
-                                                        style:width=width
-                                                        style:background=color
-                                                        style:writing-mode="vertical-rl"
-                                                    >
-                                                        {name}
-                                                    </th>
-                                                }
-                                            })
-                                            .collect::<Vec<_>>()}
-                                    </tr>
-                                    <tr>
-                                        {people
-                                            .into_iter()
-                                            .map(|(user, amount, duration)| {
-                                                view! {
-                                                    <th colspan={amount.to_string()}>
-                                <p>{
-                                    let minutes = duration.num_minutes();
-                                    let seconds = duration.num_seconds() - minutes * 60;
-                                    format!("{minutes}:{seconds} ({:.1}%)", duration.num_milliseconds() as f64 / num_milliseconds as f64 * 100.0)
-                                }</p>
-                                                    <Suspense fallback=|| {
-                                                        view! { <p>Loading username</p> }
-                                                    }><p>{user.get().map(|u| u.clone())}</p></Suspense>
+                                <colgroup>
+                                    {playlist
+                                        .tracks
+                                        .iter()
+                                        .map(|track| {
+                                            let width = format!("{}%", track.relative_size * 100.0);
+                                            view! { <col style:width=width/> }
+                                        })
+                                        .collect::<Vec<_>>()}
+                                </colgroup>
+                                <tr>
+                                    {playlist
+                                        .users
+                                        .into_iter()
+                                        .map(|user| {
+                                            view! {
+                                                <th colspan=user.amount_of_tracks.to_string()>
+                                                    <p>
+                                                        {format!(
+                                                            "{} ({:.1}%)",
+                                                            display_duration(&user.total_duration),
+                                                            user.relative_size * 100.0,
+                                                        )}
 
-                                                    </th>
-                                                }
-                                            })
-                                            .collect::<Vec<_>>()}
-                                    </tr>
-                                </tbody>
+                                                    </p>
+                                                    <p>{user.name}</p>
+
+                                                </th>
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()}
+                                </tr>
+                                <tr>
+                                    {playlist
+                                        .tracks
+                                        .iter()
+                                        .map(|track| {
+                                            let width = format!("{}%", track.relative_size * 100.0);
+                                            let color = track.color.to_string();
+                                            view! {
+                                                <th
+                                                    style:width=width
+                                                    style:background=color
+                                                    style:height="5em"
+                                                >
+                                                    <div
+                                                        style:writing-mode="vertical-rl"
+                                                        style:width="100%"
+                                                        style:height="100%"
+                                                        style:text-overflow=""
+                                                        style:overflow="hidden"
+                                                        style:white-space="nowrap"
+                                                    >
+                                                        {track.name.clone()}
+
+                                                    </div>
+                                                </th>
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()}
+                                </tr>
                             </table>
                         }
                     })
