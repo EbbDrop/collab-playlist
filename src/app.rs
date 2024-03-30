@@ -37,7 +37,12 @@ pub fn MainPage() -> impl IntoView {
     view! {
         <div class="selection">
             <h1>Your playlists:</h1>
-            <Suspense fallback=|| view! { <h1>Loading</h1> }>
+            <Suspense fallback=|| {
+                view! {
+                    <h1>Loading</h1>
+                    <a href="/login">If this is taking a long time, click here.</a>
+                }
+            }>
                 <div class="selection-buttons">
                     <For
                         each=move || playlists().unwrap_or_default()
@@ -224,7 +229,10 @@ pub fn Playlist() -> impl IntoView {
 
     view! {
         <Suspense fallback=|| {
-            view! { <h2>Loading playlist</h2> }
+            view! {
+                <h2>Loading playlist</h2>
+                <a href="/login">If this is taking a long time, click here.</a>
+            }
         }>
             {move || {
                 data()
@@ -295,6 +303,7 @@ pub fn Playlist() -> impl IntoView {
                                                     } else {
                                                         None
                                                     }}
+
                                                     <div class="ribon-track-name">{track.name.clone()}</div>
                                                     {if track.age > 0.99 {
                                                         Some(
@@ -305,6 +314,7 @@ pub fn Playlist() -> impl IntoView {
                                                     } else {
                                                         None
                                                     }}
+
                                                 </th>
                                             }
                                         })
