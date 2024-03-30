@@ -296,7 +296,7 @@ pub fn Playlist() -> impl IntoView {
                                                             view! {
                                                                 <img
                                                                     class="ribon-track-cobweb ribon-track-cobweb-top"
-                                                                    src="/cobweb-top.png"
+                                                                    src="../cobweb-top.png"
                                                                 />
                                                             },
                                                         )
@@ -308,7 +308,7 @@ pub fn Playlist() -> impl IntoView {
                                                     {if track.age > 0.99 {
                                                         Some(
                                                             view! {
-                                                                <img class="ribon-track-cobweb" src="/cobweb.png"/>
+                                                                <img class="ribon-track-cobweb" src="../cobweb.png"/>
                                                             },
                                                         )
                                                     } else {
