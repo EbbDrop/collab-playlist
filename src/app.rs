@@ -35,25 +35,28 @@ pub fn MainPage() -> impl IntoView {
     );
 
     view! {
-        <Suspense fallback=|| view! { <h1>Loading</h1> }>
-            <h1>Playlists:</h1>
-            <For
-                each=move || playlists().unwrap_or_default()
-                key=|playlist| playlist.id.clone()
-                let:playlist
-            >
-                <a
-                    href=format!("/{}", Borrow::<str>::borrow(&playlist.id))
+        <div class="selection">
+            <h1>Your playlists:</h1>
+            <Suspense fallback=|| view! { <h1>Loading</h1> }>
+                <div class="selection-buttons">
+                    <For
+                        each=move || playlists().unwrap_or_default()
+                        key=|playlist| playlist.id.clone()
+                        let:playlist
+                    >
+                        <a
+                            href=format!("/{}", Borrow::<str>::borrow(&playlist.id))
+                            class="selection-button"
+                        >
+                            {playlist.name.clone()}
+                            ": "
+                            {if playlist.collaborative { "collaborative" } else { "solo" }}
 
-                    class="selection-button"
-                >
-                    {playlist.name.clone()}
-                    ": "
-                    {if playlist.collaborative { "collaborative" } else { "solo" }}
-
-                </a>
-            </For>
-        </Suspense>
+                        </a>
+                    </For>
+                </div>
+            </Suspense>
+        </div>
         <Outlet/>
     }
 }
@@ -64,7 +67,7 @@ struct TrackInfo {
     duration: TimeDelta,
     relative_size: f64,
     color: RGB8,
-    age: TimeDelta,
+    age: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -169,6 +172,7 @@ pub fn Playlist() -> impl IntoView {
                     .into_iter()
                     .map(|(added_at, track)| {
                         let age = now.clone().signed_duration_since(added_at.unwrap_or(now));
+                        let age = (age.num_days() as f64 / 200.0).clamp(0.0, 1.0);
 
                         TrackInfo {
                             name: track.name,
@@ -243,35 +247,64 @@ pub fn Playlist() -> impl IntoView {
                                         .users
                                         .into_iter()
                                         .map(|user| {
+                                            let color = user.color.to_string();
                                             view! {
                                                 <th
+                                                    style=("--color", color)
                                                     colspan=user.amount_of_tracks.to_string()
-                                                    class="ribon-user-cell"
                                                 >
-                                                    <p class="ribon-user-name">{user.name}</p>
-                                                    <p class="ribon-user-time">
-                                                        {format!(
-                                                            "{} ({:.1}%)",
-                                                            display_duration(&user.total_duration),
-                                                            user.relative_size * 100.0,
-                                                        )}
+                                                    <div class="ribon-user-cell">
+                                                        <span class="ribon-user-name">{user.name}</span>
+                                                        <span class="ribon-user-time">
+                                                            {format!(
+                                                                "{} ({:.1}%)",
+                                                                display_duration(&user.total_duration),
+                                                                user.relative_size * 100.0,
+                                                            )}
 
-                                                    </p>
+                                                        </span>
+                                                    </div>
                                                 </th>
                                             }
                                         })
                                         .collect::<Vec<_>>()}
                                 </tr>
-                                <tr>
+                                <tr class="ribon-track-row">
                                     {playlist
                                         .tracks
                                         .iter()
                                         .map(|track| {
                                             let color = track.color.to_string();
+                                            let age = format!("{}%", track.age / 2.0 * 100.0);
                                             view! {
-                                                <th style=("--color", color) class="ribon-track-cell">
-                                                    <div class="ribon-track-name">{track.name.clone()}
-                                                    </div>
+                                                <th
+                                                    style=("--color", color)
+                                                    style=("--age", age)
+                                                    class="ribon-track-cell"
+                                                    title=track.name.clone()
+                                                >
+                                                    {if track.age > 0.99 {
+                                                        Some(
+                                                            view! {
+                                                                <img
+                                                                    class="ribon-track-cobweb ribon-track-cobweb-top"
+                                                                    src="/cobweb-top.png"
+                                                                />
+                                                            },
+                                                        )
+                                                    } else {
+                                                        None
+                                                    }}
+                                                    <div class="ribon-track-name">{track.name.clone()}</div>
+                                                    {if track.age > 0.99 {
+                                                        Some(
+                                                            view! {
+                                                                <img class="ribon-track-cobweb" src="/cobweb.png"/>
+                                                            },
+                                                        )
+                                                    } else {
+                                                        None
+                                                    }}
                                                 </th>
                                             }
                                         })

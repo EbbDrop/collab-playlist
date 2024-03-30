@@ -1,5 +1,67 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  min-height: 100vh;
+}
+
+img,
+picture,
+svg,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+
+body {
+  font-family: system-ui, sans-serif;
+  font-weight: normal;
+}
+
+th {
+  padding: 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-wrap: balance;
+}
+
+p,
+li {
+  max-width: var(--p-max-width, 65ch);
+  text-wrap: pretty;
+}
+
+.selection-buttons {
+  display: flex;
+  flex-wrap: wrap;
+}
+
 .selection-button {
-  margin: 0.2em;
+  white-space: nowrap;
+  margin: 0.4em;
+  padding: 0.4em;
+  background: lightgray;
+  border-radius: 0.4em;
 }
 
 .ribon-table {
@@ -7,18 +69,61 @@
   height: 100%;
   table-layout: fixed;
   overflow: hidden;
+  border-spacing: 1px;
+}
+
+.ribon-user-cell {
+  background: linear-gradient(0deg, var(--color) 5%, color-mix(in srgb, var(--color), transparent 50%) 35%, transparent 80%);
+  display: flex;
+  flex-direction: column;
+}
+
+.ribon-user-name {
+  font-weight: bold;
+}
+
+.ribon-track-row {
+  --radius: 0.2em;
+}
+
+.ribon-track-cell:first-child {
+  border-top-left-radius: var(--radius);
+  border-bottom-left-radius: var(--radius);
+}
+
+.ribon-track-cell:last-child {
+  border-top-right-radius: var(--radius);
+  border-bottom-right-radius: var(--radius);
 }
 
 .ribon-track-cell {
-  background: var(--color);
-  height: 5em;
+  position: relative;
+  background: color-mix(in srgb, var(--color), black var(--age));
+  height: 14em;
+  overflow: hidden;
 }
 
 .ribon-track-name {
+  display: inline;
+  font-size: 0.8em;
+  vertical-align: middle;
+
   writing-mode: vertical-rl;
-  width: 100%;
   height: 100%;
   text-overflow: "";
   overflow: hidden;
   white-space: nowrap;
+}
+
+.ribon-track-cobweb {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 1.2em;
+  height: 1.2em;
+}
+
+.ribon-track-cobweb-top {
+  top: 0;
+  left: 0;
 }
