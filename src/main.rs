@@ -23,7 +23,7 @@ fn init_spotify() -> AuthCodePkceSpotify {
         Credentials::new_pkce(SPOTIFY_API_ID),
         OAuth {
             // TODO: Should be dynamic
-            redirect_uri: "http://localhost:8080/callback".to_owned(),
+            redirect_uri: "https://ebbdrop.com/collab-playlist/callback".to_owned(),
             scopes: scopes!("playlist-read-collaborative"),
             ..Default::default()
         },
